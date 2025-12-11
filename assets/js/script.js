@@ -14,6 +14,13 @@ const cartItems = document.getElementById('cart-items');
 const cartTotal = document.getElementById('cart-total');
 const cartCount = document.getElementById('cart-count');
 const checkoutBtn = document.querySelector('.checkout-btn');
+const addToCartModal = document.getElementById('add-to-cart-modal');
+const closeAddToCartBtn = document.querySelector('.close-add-to-cart');
+const cancelAddToCartBtn = document.getElementById('cancel-add-to-cart');
+const addToCartForm = document.getElementById('add-to-cart-form');
+const productPreview = document.getElementById('product-preview');
+const sizeGroup = document.getElementById('size-group');
+let currentProductId = null;
 
 // Products Data
 const products = [
@@ -214,24 +221,153 @@ const applyFilters = () => {
     displayProducts(filteredProducts);
 };
 
-// Add to cart
-const addToCart = (e) => {
+// Show add to cart modal
+const showAddToCartModal = (e) => {
     const id = parseInt(e.target.dataset.id);
     const product = products.find(item => item.id === id);
+    currentProductId = id;
     
-    const existingItem = cart.find(item => item.id === id);
+    // Populate product preview
+    productPreview.innerHTML = `
+        <div class="preview-image">
+            <img src="${product.image}" alt="${product.name}">
+        </div>
+        <div class="preview-info">
+            <h4>${product.name}</h4>
+            <p class="preview-price">${formatPrice(product.price)}</p>
+            <p class="preview-description">${product.description}</p>
+        </div>
+    `;
+    
+    // Show size field for shoes
+    if (product.category === 'shoes') {
+        sizeGroup.style.display = 'block';
+        document.getElementById('cart-size').required = true;
+    } else {
+        sizeGroup.style.display = 'none';
+        document.getElementById('cart-size').required = false;
+    }
+    
+    // Reset form
+    addToCartForm.reset();
+    document.getElementById('cart-quantity').value = 1;
+    
+    // Show modal
+    addToCartModal.classList.add('active');
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+};
+
+// Close add to cart modal
+const closeAddToCartModal = () => {
+    addToCartModal.classList.remove('active');
+    overlay.classList.remove('active');
+    document.body.style.overflow = 'auto';
+    addToCartForm.reset();
+    currentProductId = null;
+};
+
+// Validate add to cart form
+const validateAddToCartForm = () => {
+    const name = document.getElementById('cart-name').value.trim();
+    const email = document.getElementById('cart-email').value.trim();
+    const phone = document.getElementById('cart-phone').value.trim();
+    const address = document.getElementById('cart-address').value.trim();
+    const city = document.getElementById('cart-city').value.trim();
+    const province = document.getElementById('cart-province').value.trim();
+    const zip = document.getElementById('cart-zip').value.trim();
+    const quantity = parseInt(document.getElementById('cart-quantity').value);
+    const size = document.getElementById('cart-size').value;
+    
+    if (!name || !email || !phone || !address || !city || !province || !zip || !quantity || quantity < 1) {
+        showNotification('Please fill in all required fields');
+        return false;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showNotification('Please enter a valid email address');
+        return false;
+    }
+    
+    // Validate phone format (Philippines)
+    const phoneRegex = /^(09|\+639)\d{9}$/;
+    const cleanPhone = phone.replace(/\s|-/g, '');
+    if (!phoneRegex.test(cleanPhone)) {
+        showNotification('Please enter a valid Philippine phone number (09XX XXX XXXX)');
+        return false;
+    }
+    
+    // Check size for shoes
+    if (sizeGroup.style.display === 'block' && !size) {
+        showNotification('Please select a size');
+        return false;
+    }
+    
+    return true;
+};
+
+// Process add to cart
+const processAddToCart = (e) => {
+    e.preventDefault();
+    
+    if (!validateAddToCartForm()) {
+        return;
+    }
+    
+    const product = products.find(item => item.id === currentProductId);
+    const quantity = parseInt(document.getElementById('cart-quantity').value);
+    const size = document.getElementById('cart-size').value;
+    
+    // Get customer details
+    const customerDetails = {
+        name: document.getElementById('cart-name').value.trim(),
+        email: document.getElementById('cart-email').value.trim(),
+        phone: document.getElementById('cart-phone').value.trim(),
+        address: document.getElementById('cart-address').value.trim(),
+        city: document.getElementById('cart-city').value.trim(),
+        province: document.getElementById('cart-province').value.trim(),
+        zip: document.getElementById('cart-zip').value.trim()
+    };
+    
+    // Check if item already exists in cart (with same size if applicable)
+    const existingItem = cart.find(item => {
+        if (item.id === currentProductId) {
+            if (product.category === 'shoes') {
+                return item.size === size;
+            }
+            return true;
+        }
+        return false;
+    });
     
     if (existingItem) {
-        existingItem.quantity += 1;
+        existingItem.quantity += quantity;
+        // Update customer details if different
+        existingItem.customerDetails = customerDetails;
     } else {
-        cart.push({
+        const cartItem = {
             ...product,
-            quantity: 1
-        });
+            quantity: quantity,
+            customerDetails: customerDetails
+        };
+        
+        if (product.category === 'shoes' && size) {
+            cartItem.size = size;
+        }
+        
+        cart.push(cartItem);
     }
     
     updateCart();
-    showNotification(`${product.name} added to cart`);
+    closeAddToCartModal();
+    showNotification(`${product.name} added to cart successfully!`);
+};
+
+// Add to cart (original function - now just triggers modal)
+const addToCart = (e) => {
+    showAddToCartModal(e);
 };
 
 // Update cart
@@ -244,15 +380,16 @@ const updateCart = () => {
     cartCount.textContent = totalItems;
     
     // Update cart items
-    cartItems.innerHTML = cart.map(item => `
+    cartItems.innerHTML = cart.map((item, index) => `
         <div class="cart-item">
             <div class="cart-item-img">
                 <img src="${item.image}" alt="${item.name}">
             </div>
             <div class="cart-item-details">
                 <h4 class="cart-item-title">${item.name}</h4>
+                ${item.size ? `<span class="cart-item-size">Size: ${item.size}</span>` : ''}
                 <span class="cart-item-price">${formatPrice(item.price)} x ${item.quantity}</span>
-                <button class="cart-item-remove" data-id="${item.id}">
+                <button class="cart-item-remove" data-id="${item.id}" data-index="${index}" ${item.size ? `data-size="${item.size}"` : ''}>
                     <i class="fas fa-trash"></i> Remove
                 </button>
             </div>
@@ -271,10 +408,10 @@ const updateCart = () => {
 
 // Remove from cart
 const removeFromCart = (e) => {
-    const id = parseInt(e.target.closest('.cart-item-remove').dataset.id);
-    const index = cart.findIndex(item => item.id === id);
+    const button = e.target.closest('.cart-item-remove');
+    const index = parseInt(button.dataset.index);
     
-    if (index !== -1) {
+    if (index !== -1 && index < cart.length) {
         cart.splice(index, 1);
         updateCart();
     }
@@ -381,18 +518,43 @@ if (cartBtn) {
 // Close cart button
 closeCartBtn.addEventListener('click', closeCart);
 
-// Overlay click
-overlay.addEventListener('click', closeCart);
-
 // Close cart with ESC
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && cartSidebar.classList.contains('active')) {
-        closeCart();
+    if (e.key === 'Escape') {
+        if (cartSidebar.classList.contains('active')) {
+            closeCart();
+        } else if (addToCartModal && addToCartModal.classList.contains('active')) {
+            closeAddToCartModal();
+        }
     }
 });
 
 // Checkout button
 checkoutBtn.addEventListener('click', checkout);
+
+// Add to cart modal buttons
+if (closeAddToCartBtn) {
+    closeAddToCartBtn.addEventListener('click', closeAddToCartModal);
+}
+
+if (cancelAddToCartBtn) {
+    cancelAddToCartBtn.addEventListener('click', closeAddToCartModal);
+}
+
+// Add to cart form submission
+if (addToCartForm) {
+    addToCartForm.addEventListener('submit', processAddToCart);
+}
+
+// Overlay click - handle both modals
+overlay.addEventListener('click', () => {
+    if (addToCartModal && addToCartModal.classList.contains('active')) {
+        closeAddToCartModal();
+    } else if (cartSidebar.classList.contains('active')) {
+        closeCart();
+    }
+});
+
 
 // Search input/filter
 if (searchInput) {
